@@ -2,20 +2,23 @@
 extern crate rocket;
 
 mod api;
+mod app_state;
+mod engine;
 mod model_registry;
 mod types;
 
 use std::sync::Arc;
 
-use api::{health, infer, list_models, load_model};
-use model_registry::ModelRegistry;
+use api::{health, infer, infer_stream, list_models, load_model};
+use app_state::AppState;
 
 #[launch]
 fn rocket() -> _ {
-    let registry = Arc::new(ModelRegistry::new());
+    let max_concurrent_infer = 10;
+    let state = AppState::new(max_concurrent_infer);
 
     rocket::build()
-        .manage(registry)
+        .manage(state as Arc<AppState>)
         .mount(
             "/",
             routes![
@@ -23,6 +26,7 @@ fn rocket() -> _ {
                 list_models,
                 load_model,
                 infer,
+                infer_stream,
             ],
         )
 }

@@ -9,6 +9,7 @@ pub struct HealthResponse {
 pub struct ModelInfoResponse {
     pub name: String,
     pub status: String,
+    pub engine_kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +28,8 @@ pub struct LoadModelResponse {
 pub struct InferRequest {
     pub model_name: String,
     pub prompt: String,
+    // 未来可以加参数，比如 max_tokens, temperature 等
+    // pub max_tokens: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
