@@ -4,22 +4,20 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use tokio::sync::Semaphore;
 
-use crate::engine::{DummyEngine, InferenceEngine};
+use crate::engine::{DummyEngine, CandleEngine, InferenceEngine};
 use crate::model_registry::{EngineKind, ModelMetadata, ModelRegistry, ModelStatus};
-
-
 
 /// 全局共享状态：
 /// - registry: 记录模型元信息和状态
 /// - engines: model_name -> 对应 InferenceEngine 实例
 /// - semaphore: 控制最多 N 个并发推理任务
-
 pub struct AppState {
     pub registry: Arc<ModelRegistry>,
     pub engines: RwLock<HashMap<String, Arc<dyn InferenceEngine>>>,
     pub semaphore: Arc<Semaphore>,
     pub max_concurrent_infer: usize,
 }
+
 impl AppState {
     pub fn new(max_concurrent_infer: usize) -> Arc<Self> {
         Arc::new(Self {
@@ -36,18 +34,20 @@ impl AppState {
 
     /// 加载模型：根据 EngineKind 创建对应 Engine，并放入 engines 映射中
     pub fn load_model(&self, model_name: &str) -> Result<ModelMetadata, String> {
+        // 先从 registry 拿元数据
         let meta = self
             .registry
             .get_model(model_name)
             .ok_or_else(|| format!("model `{}` not found", model_name))?;
 
-        // 先标记为 Loading
+        // 标记为 Loading
         let _ = self.registry.set_status(model_name, ModelStatus::Loading);
 
-        // 根据 engine_kind 创建具体的 Engine 实例
+        // 根据 engine_kind 创建具体 Engine
         let engine: Arc<dyn InferenceEngine> = match meta.engine_kind {
             EngineKind::Dummy => DummyEngine::new(model_name),
-            // EngineKind::Candle => { ... 构造 CandleEngine ... }
+            EngineKind::Candle => CandleEngine::new(model_name)
+                .map_err(|e| format!("failed to init CandleEngine for `{}`: {e}", model_name))?,
         };
 
         {
@@ -55,7 +55,7 @@ impl AppState {
             guard.insert(model_name.to_string(), engine);
         }
 
-        // 标记为 Loaded
+        // 成功后标记为 Loaded
         let meta = self
             .registry
             .set_status(model_name, ModelStatus::Loaded)

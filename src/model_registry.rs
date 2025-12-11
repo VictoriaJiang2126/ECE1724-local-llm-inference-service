@@ -15,7 +15,7 @@ pub enum ModelStatus {
 #[derive(Debug, Clone, Copy, Serialize)]
 pub enum EngineKind {
     Dummy,
-    // Candle, // 以后可以打开这一行
+    Candle, // 以后可以打开这一行
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -60,7 +60,7 @@ impl ModelRegistry {
                 "mistral-7b",
                 "./models/mistral-7b",
                 "q4_k_m",
-                EngineKind::Dummy,
+                EngineKind::Candle,
             ),
         );
         map.insert(
