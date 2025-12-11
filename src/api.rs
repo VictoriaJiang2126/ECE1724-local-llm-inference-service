@@ -194,3 +194,73 @@ pub async fn infer_stream(
     }
 }
 
+
+/// GET SSE：/infer_stream?model_name=xxx&prompt=yyy
+#[get("/infer_stream?<model_name>&<prompt>")]
+pub async fn infer_stream_get(
+    state: &State<Arc<AppState>>,
+    model_name: &str,
+    prompt: &str,
+    mut shutdown: Shutdown,
+) -> EventStream![] {
+    let state = state.inner().clone();
+    let model_name = model_name.to_string();
+    let prompt = prompt.to_string();
+
+    EventStream! {
+        // 1) 校验模型是否存在 & 已加载
+        let meta_opt = state.registry.get_model(&model_name);
+        if meta_opt.is_none() {
+            yield Event::data(format!("Error: model `{}` not found", model_name));
+            return;
+        }
+        let meta = meta_opt.unwrap();
+        if !matches!(meta.status, ModelStatus::Loaded) {
+            yield Event::data(format!(
+                "Error: model `{}` is not loaded (status = {:?})",
+                model_name, meta.status
+            ));
+            return;
+        }
+
+        // 2) 获取 engine
+        let engine_opt = state.get_engine(&model_name);
+        if engine_opt.is_none() {
+            yield Event::data(format!("Error: no engine instance for `{}`", model_name));
+            return;
+        }
+        let engine = engine_opt.unwrap();
+
+        // 3) 并发控制
+        let semaphore = state.semaphore.clone();
+        let permit = semaphore.acquire_owned().await.unwrap();
+
+        // 4) 建 channel
+        let (tx, mut rx) = mpsc::channel::<String>(32);
+
+        // 5) 后台推理任务（流式写入 tx）
+        rocket::tokio::spawn(async move {
+            let _permit = permit; // 保证推理期间占用 slot
+            let _ = engine.generate_stream(&prompt, 128, tx).await;
+        });
+
+        // 6) 主循环：把 channel 里的 chunk 以 SSE 事件发给前端
+        loop {
+            select! {
+                maybe_chunk = rx.recv() => {
+                    match maybe_chunk {
+                        Some(text) => {
+                            yield Event::data(text);
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+                _ = &mut shutdown => {
+                    break;
+                }
+            }
+        }
+    }
+}

@@ -9,8 +9,12 @@ mod types;
 
 use std::sync::Arc;
 
-use api::{health, infer, infer_stream, list_models, load_model};
+use api::{health, infer, infer_stream, infer_stream_get, list_models, load_model};
 use app_state::AppState;
+
+
+
+
 
 #[launch]
 fn rocket() -> _ {
@@ -25,8 +29,10 @@ fn rocket() -> _ {
                 health,
                 list_models,
                 load_model,
-                infer,
-                infer_stream,
+                infer,              // POST /infer         （非流式）
+                infer_stream,       // POST /infer?stream=true （curl 用）
+                infer_stream_get,   // GET  /infer_stream?model_name=&prompt= （前端用）
             ],
         )
+        .mount("/", rocket::fs::FileServer::from("static"))
 }

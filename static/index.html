@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Local LLM Chat Demo</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f7f7f7;
+    padding: 20px;
+  }
+  #chat {
+    width: 100%;
+    height: 400px;
+    padding: 15px;
+    background: white;
+    border-radius: 10px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    margin-bottom: 20px;
+  }
+  #input-box {
+    display: flex;
+    gap: 10px;
+  }
+  textarea {
+    flex: 1;
+    height: 80px;
+    padding: 10px;
+    font-size: 14px;
+  }
+  button {
+    padding: 10px 15px;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    background: #007aff;
+    border: none;
+    color: white;
+  }
+  select {
+    padding: 5px;
+    font-size: 14px;
+  }
+</style>
+</head>
+
+<body>
+
+<h2>Local LLM Chat Demo</h2>
+
+<div>
+  <label for="model-select">Model:</label>
+  <select id="model-select"></select>
+</div>
+
+<div id="chat"></div>
+
+<div id="input-box">
+  <textarea id="prompt" placeholder="Type your prompt here..."></textarea>
+  <button onclick="sendPrompt()">Send</button>
+</div>
+
+<script>
+// Load available models
+async function loadModels() {
+  const res = await fetch("/models");
+  const models = await res.json();
+
+  const select = document.getElementById("model-select");
+  select.innerHTML = "";
+
+  models.forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = m.name;
+    opt.textContent = `${m.name} (${m.status})`;
+    select.appendChild(opt);
+  });
+}
+
+loadModels();
+
+// Append message to chat window
+function appendMessage(text, isModel = false) {
+  const chat = document.getElementById("chat");
+
+  const div = document.createElement("div");
+  div.style.marginBottom = "10px";
+  div.style.whiteSpace = "pre-wrap";
+
+  if (isModel) {
+    div.innerHTML = `<b>Model:</b> ${text}`;
+  } else {
+    div.innerHTML = `<b>You:</b> ${text}`;
+  }
+
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+// SSE streaming request
+function sendPrompt() {
+  const prompt = document.getElementById("prompt").value.trim();
+  if (!prompt) return;
+
+  const model = document.getElementById("model-select").value;
+  appendMessage(prompt, false); // 显示用户消息
+
+  document.getElementById("prompt").value = "";
+
+  const chat = document.getElementById("chat");
+  const responseDiv = document.createElement("div");
+  responseDiv.style.marginBottom = "10px";
+  responseDiv.style.whiteSpace = "pre-wrap";
+  responseDiv.innerHTML = `<b>${model}:</b> `;
+  chat.appendChild(responseDiv);
+
+  // 用 GET + query 参数 调用 /infer_stream
+  const url = `/infer_stream?model_name=${encodeURIComponent(model)}&prompt=${encodeURIComponent(prompt)}`;
+  const evt = new EventSource(url);
+
+  evt.onmessage = (ev) => {
+    responseDiv.innerHTML += ev.data + " ";
+    chat.scrollTop = chat.scrollHeight;
+  };
+
+  evt.onerror = () => {
+    evt.close();
+  };
+}
+</script>
+
+</body>
+</html>
